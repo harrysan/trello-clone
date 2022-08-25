@@ -1,0 +1,125 @@
+"A datetime string with format `Y-m-d H:i:s`, e.g. `2018-05-23 13:43:32`."
+scalar DateTime
+    @scalar(class: "Nuwave\\Lighthouse\\Schema\\Types\\Scalars\\DateTime")
+
+"Indicates what fields are available at the top level of a query operation."
+type Query {
+    "Find a single user by an identifying attribute."
+    user(
+        "Search by primary key."
+        id: ID @eq @rules(apply: ["prohibits:email", "required_without:email"])
+
+        "Search by email address."
+        email: String
+            @eq
+            @rules(apply: ["prohibits:id", "required_without:id", "email"])
+    ): User @find
+
+    "List multiple users."
+    users(
+        "Filters by name. Accepts SQL LIKE wildcards `%` and `_`."
+        name: String @where(operator: "like")
+    ): [User!]! @paginate(defaultCount: 10)
+
+    userBoards(owner_id: ID! @where): [Board!]
+        @all
+        @can(
+            ability: "viewOwnedBoards"
+            find: "owner_id"
+            model: "App\\Models\\User"
+        )
+
+    board(id: ID! @eq): Board @find
+    me: User @auth
+}
+
+type Mutation {
+    cardAdd(input: CardAddInput! @spread): Card!
+        @create
+        @can(
+            ability: "createCard"
+            model: "App\\Models\\CardList"
+            find: "list_id"
+        )
+    cardDelete(id: ID!): Card @delete @can(ability: "delete", find: "id")
+    cardUpdate(id: ID!, title: String): Card
+        @update
+        @can(ability: "update", find: "id")
+
+    boardAdd(title: String!, color: String!): Board! @create
+
+    listAdd(title: String!, board_id: ID!): CardList! @create
+
+    "Log in to a new session and get the user."
+    login(email: String!, password: String!): User!
+
+    "Log out from the current session, showing the user one last time."
+    logout: User @guard
+
+    register(
+        email: String! @rules(apply: ["required", "email", "unique:users"])
+        password: String! @rules(apply: ["required", "min:8"]) @hash
+        name: String! @rules(apply: ["required", "min:2"])
+    ): User @create @event(dispatch: "Illuminate\\Auth\\Events\\Registered")
+}
+
+"Account of a person who utilizes this application."
+type User {
+    "Unique primary key."
+    id: ID!
+
+    "Non-unique name."
+    name: String!
+
+    "Unique email address."
+    email: String!
+
+    "When the email was verified."
+    email_verified_at: DateTime
+
+    "When the account was created."
+    created_at: DateTime!
+
+    "When the account was last updated."
+    updated_at: DateTime!
+
+    boards: [Board!]! @hasMany
+    cards: [Card!]! @hasMany
+}
+
+type Board {
+    id: ID!
+    created_at: DateTime!
+    updated_at: DateTime!
+    title: String!
+    color: String!
+    lists: [CardList!]! @hasMany
+    owner: User! @belongsTo
+}
+
+type CardList {
+    id: ID!
+    created_at: DateTime!
+    updated_at: DateTime!
+    title: String!
+    cards: [Card!]! @hasMany
+    board: Board! @belongsTo
+    board_id: ID!
+}
+
+type Card {
+    id: ID!
+    created_at: DateTime!
+    updated_at: DateTime!
+    title: String!
+    order: Int!
+    list: CardList! @belongsTo
+    owner: User! @belongsTo
+}
+
+input CardAddInput {
+    title: String!
+    order: Int!
+    list_id: ID!
+    owner_id: ID!
+}
